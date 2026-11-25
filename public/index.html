@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+  <title>Shop & Balitina</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">🏪 Shop Ledger</div>
+  <button id="operator-chip" class="operator-chip">👤 …</button>
+</header>
+<nav class="tabs" id="tabs">
+  <button class="tab active" data-tab="dashboard">🏠 Home</button>
+  <button class="tab" data-tab="dube">👥 Dube</button>
+  <button class="tab" data-tab="daily">💰 Daily</button>
+  <button class="tab" data-tab="items">📦 Items</button>
+  <button class="tab" data-tab="settings">⚙️ Settings</button>
+</nav>
+<main>
+  <section id="tab-dashboard" class="tab-panel active">
+    <div class="kpi-grid">
+      <div class="kpi"><div class="kpi-label">Dube Outstanding</div><div class="kpi-value" id="kpi-dube">—</div><div class="kpi-sub" id="kpi-debtors">—</div></div>
+      <div class="kpi"><div class="kpi-label">Today Balitina</div><div class="kpi-value" id="kpi-balitina">—</div></div>
+      <div class="kpi"><div class="kpi-label">Today Wechi</div><div class="kpi-value" id="kpi-wechi">—</div></div>
+      <div class="kpi" id="kpi-today-net-card"><div class="kpi-label">Today Net</div><div class="kpi-value" id="kpi-today-net">—</div><div class="kpi-sub" id="kpi-today-status">—</div></div>
+      <div class="kpi full" id="kpi-cum-card"><div class="kpi-label">Enate's Running Keri / Alebat</div><div class="kpi-value" id="kpi-cumulative">—</div><div class="kpi-sub" id="kpi-cum-note">—</div></div>
+    </div>
+    <h3 class="h3">Quick Actions</h3>
+    <div class="actions-grid">
+      <button class="action" data-act="new-dube">＋ New Dube</button>
+      <button class="action" data-act="record-payment">💵 Record Payment</button>
+      <button class="action" data-act="add-balitina">💰 Balitina Sale</button>
+      <button class="action" data-act="add-expense">🧾 Yebet Wechi</button>
+      <button class="action" data-act="manage-items">📦 Items</button>
+    </div>
+    <h3 class="h3">Open Dube Balances</h3>
+    <div id="dash-debtors" class="list"></div>
+  </section>
+  <section id="tab-dube" class="tab-panel">
+    <div class="row">
+      <input id="cust-search" class="input" placeholder="Search name or phone…">
+      <button id="add-customer-btn" class="btn primary">＋</button>
+    </div>
+    <div id="customer-list" class="list"></div>
+  </section>
+  <section id="tab-new-dube" class="tab-panel">
+    <h2 class="h2">New Dube Entry</h2>
+    <div class="card">
+      <label class="field"><span>Customer</span><select id="dube-customer" class="input"></select></label>
+      <label class="field"><span>Notes</span><input id="dube-notes" class="input" placeholder="Notes"></label>
+    </div>
+    <div class="card">
+      <div class="items-head"><div>Item</div><div>Qty</div><div>Price</div><div>Subtotal</div><div></div></div>
+      <div id="dube-items"></div>
+      <button id="add-line" class="btn ghost">＋ Add line</button>
+      <div class="total-bar"><span>Total</span><strong id="dube-total">0.00</strong></div>
+    </div>
+    <button id="save-dube" class="btn primary big">Save Dube</button>
+  </section>
+  <section id="tab-daily" class="tab-panel">
+    <div class="row date-nav">
+      <button class="btn" id="prev-day">◀</button>
+      <input id="day-picker" type="date" class="input" style="text-align:center;max-width:170px">
+      <button class="btn" id="next-day">▶</button>
+      <button class="btn" id="today-btn">Today</button>
+    </div>
+    <div class="kpi-grid">
+      <div class="kpi"><div class="kpi-label">Balitina Sales</div><div class="kpi-value" id="day-balitina">—</div></div>
+      <div class="kpi"><div class="kpi-label">Wechi</div><div class="kpi-value" id="day-wechi">—</div></div>
+      <div class="kpi full" id="day-net-card"><div class="kpi-label">Net (Balitina − Wechi)</div><div class="kpi-value" id="day-net">—</div><div class="kpi-sub" id="day-status">—</div></div>
+      <div class="kpi full" id="day-cum-card"><div class="kpi-label">Cumulative (Enate Position)</div><div class="kpi-value" id="day-cum">—</div></div>
+    </div>
+    <div class="row actions-grid">
+      <button class="action" data-act="add-balitina">＋ Balitina</button>
+      <button class="action" data-act="add-expense">🧾 Wechi</button>
+    </div>
+    <h3 class="h3">Balitina Sales — <span id="day-label">—</span></h3>
+    <div id="day-sales" class="list"></div>
+    <h3 class="h3">Household Expenses</h3>
+    <div id="day-expenses" class="list"></div>
+  </section>
+  <section id="tab-items" class="tab-panel">
+    <div class="row"><h2 class="h2" style="margin:0;flex:1">Items &amp; Measurements</h2><button id="add-item-btn" class="btn primary">＋</button></div>
+    <div id="item-list" class="list"></div>
+  </section>
+  <section id="tab-settings" class="tab-panel">
+    <h2 class="h2">Shop Info</h2>
+    <div class="card">
+      <label class="field"><span>Shop Name</span><input id="s-name" class="input"></label>
+      <label class="field"><span>Address</span><input id="s-address" class="input"></label>
+      <label class="field"><span>Phone</span><input id="s-phone" class="input"></label>
+      <button id="save-shop" class="btn primary">Save Shop Info</button>
+    </div>
+    <h2 class="h2">Operators (Family)</h2>
+    <div id="user-list" class="list"></div>
+    <button id="add-user-btn" class="btn primary" style="margin-top:.75rem">＋ Add Operator</button>
+  </section>
+</main>
+<div class="modal-backdrop" id="modal-backdrop" hidden><div class="modal" id="modal"></div></div>
+<script src="app.js"></script>
+</body>
+</html>
