@@ -6,10 +6,30 @@ const { round2, allocateDubePayments, customerBalance, customerSummary, dailySet
 const telegram = require('./lib/telegram');
 
 const app = express();
+
+// Catch errors in async routes so one bad request cannot crash the server
+['get', 'post', 'put', 'delete'].forEach(m => {
+  const orig = app[m].bind(app);
+  app[m] = (p, ...handlers) => orig(p, ...handlers.map(h => (req, res, next) => Promise.resolve(h(req, res, next)).catch(next)));
+});
+
+// Simple password (set APP_PASSWORD in Render > Environment). Any username works.
+app.use((req, res, next) => {
+  const pw = process.env.APP_PASSWORD;
+  if (!pw || req.path === '/healthz') return next();
+  const [, b64] = (req.headers.authorization || '').split(' ');
+  const given = Buffer.from(b64 || '', 'base64').toString().split(':').slice(1).join(':');
+  if (given === pw) return next();
+  res.set('WWW-Authenticate', 'Basic realm="Shop"').status(401).send('Password required');
+});
+
+app.get('/healthz', (req, res) => res.send('ok'));
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
-const today = () => new Date().toISOString().slice(0, 10);
+// Ethiopia is UTC+3, so use that for "today"
+const today = () => new Date(Date.now() + 3 * 3600 * 1000).toISOString().slice(0, 10);
+const positive = n => Number.isFinite(Number(n)) && Number(n) > 0;
 
 // Settings
 app.get('/api/settings', async (req, res) => {
@@ -61,6 +81,7 @@ app.get('/api/customers/:id', async (req, res) => {
 
 app.post('/api/customers', async (req, res) => {
   const { name, phone, telegram_username, telegram_chat_id, notes } = req.body;
+  if (!name || !name.trim()) return res.status(400).json({ error: 'Name is required' });
   try {
     const r = await pool.query(`INSERT INTO customers (name, phone, telegram_username, telegram_chat_id, notes) VALUES ($1,$2,$3,$4,$5) RETURNING *`, [name, phone || null, telegram_username || null, telegram_chat_id || null, notes || null]);
     res.json(r.rows[0]);
@@ -78,17 +99,26 @@ app.post('/api/items', async (req, res) => {
 // Dube
 app.post('/api/dube', async (req, res) => {
   const { customer_id, notes, items, operator_id } = req.body;
-  const total = items.reduce((s, it) => s + (it.quantity * it.unit_price), 0);
-  const tx = (await pool.query(`INSERT INTO dube_transactions (customer_id, notes, total_amount, operator_id) VALUES ($1,$2,$3,$4) RETURNING id`, [customer_id, notes || null, total, operator_id || null])).rows[0];
-  for (const it of items) {
-    await pool.query(`INSERT INTO dube_items (transaction_id, item_name, unit, quantity, unit_price, line_total) VALUES ($1,$2,$3,$4,$5,$6)`, [tx.id, it.item_name, it.unit, it.quantity, it.unit_price, it.quantity * it.unit_price]);
-  }
-  res.json({ id: tx.id, total_amount: total });
+  if (!customer_id || !Array.isArray(items) || !items.length || !items.every(it => it.item_name && positive(it.quantity) && positive(it.unit_price)))
+    return res.status(400).json({ error: 'Choose a customer and add at least one item with quantity and price' });
+  const total = round2(items.reduce((s, it) => s + it.quantity * it.unit_price, 0));
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const tx = (await client.query(`INSERT INTO dube_transactions (customer_id, notes, total_amount, operator_id) VALUES ($1,$2,$3,$4) RETURNING id`, [customer_id, notes || null, total, operator_id || null])).rows[0];
+    for (const it of items) {
+      await client.query(`INSERT INTO dube_items (transaction_id, item_name, unit, quantity, unit_price, line_total) VALUES ($1,$2,$3,$4,$5,$6)`, [tx.id, it.item_name, it.unit || null, it.quantity, it.unit_price, round2(it.quantity * it.unit_price)]);
+    }
+    await client.query('COMMIT');
+    res.json({ id: tx.id, total_amount: total });
+  } catch (e) { await client.query('ROLLBACK'); throw e; }
+  finally { client.release(); }
 });
 
 // Payments
 app.post('/api/dube-payments', async (req, res) => {
   const { customer_id, amount, payment_method, operator_id } = req.body;
+  if (!customer_id || !positive(amount)) return res.status(400).json({ error: 'Amount must be more than 0' });
   await pool.query(`INSERT INTO dube_payments (customer_id, amount, payment_method, operator_id) VALUES ($1,$2,$3,$4)`, [customer_id, amount, payment_method || 'cash', operator_id || null]);
   res.json({ ok: true });
 });
@@ -101,6 +131,7 @@ app.get('/api/balitina', async (req, res) => {
 });
 app.post('/api/balitina', async (req, res) => {
   const { amount, sale_date } = req.body;
+  if (!positive(amount)) return res.status(400).json({ error: 'Amount must be more than 0' });
   await pool.query(`INSERT INTO balitina_sales (sale_date, amount) VALUES (COALESCE($1, CURRENT_DATE), $2)`, [sale_date, amount]);
   res.json({ ok: true });
 });
@@ -111,8 +142,15 @@ app.get('/api/expenses', async (req, res) => {
 });
 app.post('/api/expenses', async (req, res) => {
   const { amount, description, expense_date } = req.body;
+  if (!positive(amount)) return res.status(400).json({ error: 'Amount must be more than 0' });
   await pool.query(`INSERT INTO household_expenses (expense_date, amount, description) VALUES (COALESCE($1, CURRENT_DATE), $2, $3)`, [expense_date, amount, description]);
   res.json({ ok: true });
+});
+
+// Daily settlement (the Daily tab calls this)
+app.get('/api/settlement/:date', async (req, res) => {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(req.params.date)) return res.status(400).json({ error: 'Bad date' });
+  res.json(await dailySettlement(req.params.date));
 });
 
 // Dashboard
@@ -128,5 +166,13 @@ app.get('/api/dashboard', async (req, res) => {
   res.json({ dube: { totalOutstanding: round2(totalOutstanding), debtors }, today: todaySettle, cumulative, cumulativeStatus: cumulative > 0.01 ? 'keri' : cumulative < -0.01 ? 'alebat' : 'balanced' });
 });
 
+app.use((err, req, res, next) => {
+  console.error(err);
+  res.status(500).json({ error: 'Server error' });
+});
+
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`✅ Server running on port ${PORT}`));
+const schema = require('fs').readFileSync(path.join(__dirname, 'schema.sql'), 'utf8');
+pool.query(schema)
+  .then(() => app.listen(PORT, () => console.log(`✅ Server running on port ${PORT}`)))
+  .catch(e => { console.error('Database setup failed:', e.message); process.exit(1); });
